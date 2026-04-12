@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NMRSW Student Council Scheduler</title>
+  <title>NMRSWSC Scheduler</title>
   
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet" />
   
@@ -18,7 +18,7 @@
       <div class="login-logo">
         <div class="login-logo-icon">SC</div>
         <div>
-          <div class="login-logo-text">NMR SW Student Council Scheduler</div>
+          <div class="login-logo-text">NMRSWSC Scheduler</div>
           <div class="login-logo-sub">ระบบตารางงานคณะกรรมการนักเรียน</div>
         </div>
       </div>
@@ -33,7 +33,7 @@
     <div class="topbar">
       <div class="topbar-left">
         <div class="topbar-logo">SC</div>
-        <div><div class="topbar-title">Student Council Scheduler</div><div class="topbar-sub">ระบบตารางงานคณะกรรมการนักเรียน</div></div>
+        <div><div class="topbar-title">NMRSWSC Scheduler</div><div class="topbar-sub">ระบบตารางงานคณะกรรมการนักเรียน</div></div>
       </div>
       <div class="topbar-right">
         <span class="role-badge" id="top-role"></span>
@@ -79,7 +79,7 @@
             <div class="cal-body" id="cal-body"></div>
           </div>
           <div class="legend">
-            <div class="legend-item"><div class="legend-dot" style="background:#e8f0fe;border:1px solid #b5d4f4"></div>ประชุม</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#ffebee;border:1px solid #ffcdd2"></div>ประชุม</div>
             <div class="legend-item"><div class="legend-dot" style="background:#EAF3DE;border:1px solid #C0DD97"></div>กิจกรรม</div>
             <div class="legend-item"><div class="legend-dot" style="background:#FAEEDA;border:1px solid #FAC775"></div>งานสำคัญ</div>
             <div class="legend-item"><div class="legend-dot" style="background:#FCEBEB;border:1px solid #F7C1C1"></div>กำหนดส่ง</div>
@@ -107,6 +107,13 @@
           <div class="members-grid" id="member-cards"></div>
         </div>
       </main>
+    </div>
+    
+    <div class="bottom-nav">
+      <div class="bottom-nav-item active" onclick="setView('calendar',this)" data-view="calendar"><span class="nav-icon">📅</span></div>
+      <div class="bottom-nav-item" onclick="setView('list',this)" data-view="list"><span class="nav-icon">📋</span></div>
+      <div class="bottom-nav-item" onclick="setView('mytasks',this)" data-view="mytasks"><span class="nav-icon">✅</span></div>
+      <div class="bottom-nav-item" onclick="setView('members',this)" data-view="members"><span class="nav-icon">👥</span></div>
     </div>
   </div>
 

@@ -1,11 +1,8 @@
 // DATA
-// ไปที่ Supabase > Project Settings > API เพื่อเอา URL และ anon key มาใส่ตรงนี้
 const SUPABASE_URL = 'https://hgwswhcbfwegoantrhqy.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VUlRS97KudTUCEOo2HptRw_suOf3CbS';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ลบ const USERS = {...} และ let events = [...] แบบเดิมทิ้งไป 
-// แล้วใช้ตัวแปรเปล่าแบบนี้แทน
 let USERS = {};
 let MEMBERS_LIST = [];
 let events = [];
@@ -17,7 +14,6 @@ const THAI_MONTHS=['มกราคม','กุมภาพันธ์','มี
 
 async function loadDataFromDB() {
   try {
-    // โหลด Users
     const { data: userData, error: userError } = await supabaseClient.from('users').select('*');
     if (userError) throw userError;
 
@@ -29,7 +25,6 @@ async function loadDataFromDB() {
       MEMBERS_LIST = userData;
     }
 
-    // โหลด Events และ Signups
     const { data: eventData, error: eventError } = await supabaseClient
       .from('events')
       .select(`*, event_signups(username, signed_at)`);
@@ -85,7 +80,6 @@ async function doLogin() {
       document.getElementById('btn-add-list').classList.add('hidden');
     }
     
-    // โหลดข้อมูลทั้งหมดเมื่อล็อกอินสำเร็จ
     await loadDataFromDB();
   } else { 
     err.style.display = 'block'; 
@@ -96,30 +90,39 @@ document.getElementById('login-user').addEventListener('keydown',e=>{if(e.key===
 function doLogout(){currentUser=null;document.getElementById('main-screen').style.display='none';document.getElementById('login-screen').style.display='flex';document.getElementById('login-user').value='';document.getElementById('login-pass').value=''}
 
 // NAVIGATION
-function setView(view,el){
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  if(el)el.classList.add('active');
-  ['calendar','list','mytasks','members','database'].forEach(v=>{
-    const d=document.getElementById('view-'+v);
-    if(d)d.style.display=v===view?'block':'none';
+function setView(view, el){
+  // เคลียร์สถานะ active ทั้ง sidebar และ bottom nav
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
+  
+  // ซิงค์ปุ่มให้ active ตรงกัน
+  const sideEl = document.querySelector(`.nav-item[data-view="${view}"]`);
+  const botEl = document.querySelector(`.bottom-nav-item[data-view="${view}"]`);
+  if(sideEl) sideEl.classList.add('active');
+  if(botEl) botEl.classList.add('active');
+
+  ['calendar','list','mytasks','members','database'].forEach(v => {
+    const d = document.getElementById('view-'+v);
+    if(d) d.style.display = v === view ? 'block' : 'none';
   });
-  if(view==='mytasks')renderMyTasks();
+  if(view === 'mytasks') renderMyTasks();
 }
 function switchToView(view,btn){
   document.querySelectorAll('.view-tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
-  setView(view,document.querySelector(`[data-view="${view}"]`));
+  setView(view, null); // เรียก setView เปล่าๆ ระบบจะซิงค์ปุ่มให้เอง
 }
 
-// HELPERS
+// HELPERS (เปลี่ยนโทนสีสำหรับ Type หลัก)
 const tClass=t=>({meeting:'ev-meeting',activity:'ev-activity',event:'ev-event',deadline:'ev-deadline'}[t]||'ev-meeting');
 const tLabel=t=>({meeting:'ประชุม',activity:'กิจกรรม',event:'งานสำคัญ',deadline:'กำหนดส่ง'}[t]||t);
 const tEmoji=t=>({meeting:'📋',activity:'🎉',event:'⭐',deadline:'⏰'}[t]||'📌');
 const sLabel=s=>({upcoming:'กำลังจะมาถึง',ongoing:'กำลังดำเนิน',done:'เสร็จสิ้น',cancelled:'ยกเลิก'}[s]||s);
 const sTagClass=s=>({upcoming:'tag-upcoming',ongoing:'tag-ongoing',done:'tag-done',cancelled:'tag-cancelled'}[s]||'');
-const bColor=t=>({meeting:'#1a56db',activity:'#63991f',event:'#BA7517',deadline:'#e24b4a'}[t]||'#888');
-const sBg=s=>({upcoming:'#e8f0fe',ongoing:'#FAEEDA',done:'#EAF3DE',cancelled:'#FCEBEB'}[s]);
-const sColor=s=>({upcoming:'#1449b8',ongoing:'#854F0B',done:'#3B6D11',cancelled:'#A32D2D'}[s]);
+// ปรับแก้สีพื้นหลัง event-color-bar ให้เข้ากับธีมแดง
+const bColor=t=>({meeting:'#d32f2f',activity:'#63991f',event:'#BA7517',deadline:'#e24b4a'}[t]||'#888'); 
+const sBg=s=>({upcoming:'#ffebee',ongoing:'#FAEEDA',done:'#EAF3DE',cancelled:'#FCEBEB'}[s]);
+const sColor=s=>({upcoming:'#b71c1c',ongoing:'#854F0B',done:'#3B6D11',cancelled:'#A32D2D'}[s]);
 function dateFmt(d){if(!d)return'';const[y,m,day]=d.split('-');return`${parseInt(day)} ${THAI_MONTHS[parseInt(m)-1]} ${parseInt(y)+543}`}
 function getU(username){return USERS[username]||{name:username,av:username[0]||'?',dept:'',roleLabel:''}}
 function isSigned(ev){return currentUser&&ev.signups.some(s=>s.username===currentUser.username)}
@@ -131,7 +134,6 @@ function slotInfo(ev){
   return{pct,text:`${cur}/${max} คน`,full:cur>=max,cur,max};
 }
 function slotBarColor(ev){const{full,pct}=slotInfo(ev);return full?'#e24b4a':pct>=70?'#BA7517':'#3B6D11'}
-function nowStr(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
 
 // RENDER ALL
 function renderAll(){renderCalendar();renderList();renderMembers();updateStats()}
@@ -297,7 +299,7 @@ async function saveEvent() {
     title: title,
     type: document.getElementById('f-type').value,
     date: document.getElementById('f-start').value,
-    time: document.getElementById('f-starttime').value + ':00', // DB ต้องการวินาที
+    time: document.getElementById('f-starttime').value + ':00', 
     end_date: document.getElementById('f-end').value || null,
     end_time: document.getElementById('f-endtime').value ? document.getElementById('f-endtime').value + ':00' : null,
     location: document.getElementById('f-location').value,
@@ -308,17 +310,15 @@ async function saveEvent() {
   };
 
   if(editingId !== null) {
-    // แก้ไข
     await supabaseClient.from('events').update(payload).eq('id', editingId);
     showToast('✅ แก้ไขงานเรียบร้อยแล้ว');
   } else {
-    // เพิ่มใหม่
     await supabaseClient.from('events').insert([payload]);
     showToast('✅ เพิ่มงานใหม่เรียบร้อยแล้ว');
   }
   
   closeModal('modal-add');
-  await loadDataFromDB(); // โหลดข้อมูลใหม่จาก DB
+  await loadDataFromDB(); 
   if(document.getElementById('view-mytasks').style.display!=='none') renderMyTasks();
 }
 
@@ -328,7 +328,6 @@ async function signupEvent(id) {
   if (isSigned(e)) { showToast('คุณลงชื่อแล้ว'); return; }
   if (e.maxMembers > 0 && e.signups.length >= e.maxMembers) { showToast('ขออภัย ที่นั่งเต็มแล้ว'); return; }
   
-  // บันทึกลง Database
   const { error } = await supabaseClient.from('event_signups').insert([
     { event_id: id, username: currentUser.username }
   ]);
@@ -336,12 +335,11 @@ async function signupEvent(id) {
   if(!error){
     showToast('✍️ ลงชื่อสำเร็จ!');
     await loadDataFromDB();
-    showDetail(id); // รีเฟรช Modal รายละเอียด
+    showDetail(id); 
   }
 }
 
 async function unsignEvent(id) {
-  // ลบข้อมูลจาก Database
   await supabaseClient.from('event_signups')
     .delete()
     .eq('event_id', id)
@@ -354,7 +352,6 @@ async function unsignEvent(id) {
 }
 
 async function deleteEvent(id) {
-  // ลบข้อมูลจาก Database
   await supabaseClient.from('events').delete().eq('id', id);
   
   closeModal('modal-confirm');
@@ -443,3 +440,4 @@ function closeModal(id){document.getElementById(id).classList.remove('open')}
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')}));
 let toastT;
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600)}
+

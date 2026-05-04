@@ -489,7 +489,73 @@ function exportSignups(id){
   a.click();URL.revokeObjectURL(a.href);
   showToast(`⬇️ Export รายชื่อ ${e.signups.length} คน เรียบร้อย`);
 }
+// CALENDAR
+function changeMonth(delta){
+  calMonth+=delta;
+  if(calMonth>11){calMonth=0;calYear++}
+  if(calMonth<0){calMonth=11;calYear--}
+  renderCalendar();
+}
 
+function renderCalendar(){
+  const days=['อา','จ','อ','พ','พฤ','ศ','ส'];
+  document.getElementById('cal-nav-label').textContent=`${THAI_MONTHS[calMonth]} ${calYear+543}`;
+  document.getElementById('cal-month-title').textContent=`ปฏิทิน — ${THAI_MONTHS[calMonth]} ${calYear+543}`;
+  document.getElementById('cal-header').innerHTML=days.map(d=>`<div class="cal-day-name">${d}</div>`).join('');
+  const dIM=new Date(calYear,calMonth+1,0).getDate();
+  const startDow=new Date(calYear,calMonth,1).getDay();
+  const prevD=new Date(calYear,calMonth,0).getDate();
+  let c='';
+  
+  // วันที่ของเดือนก่อนหน้า
+  for(let i=0;i<startDow;i++) {
+    c+=`<div class="cal-cell other-month"><div class="cal-date">${prevD-startDow+1+i}</div></div>`;
+  }
+  
+  // วันที่ของเดือนปัจจุบัน
+  for(let d=1;d<=dIM;d++){
+    const isToday=d===TODAY.getDate()&&calMonth===TODAY.getMonth()&&calYear===TODAY.getFullYear();
+    const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    
+    // ดึงงานทั้งหมดที่ครอบคลุมถึงวันที่นี้ (ds)
+    const pills = events.filter(e => {
+      const start = e.date;
+      const end = e.endDate || e.date; // ถ้าไม่มี endDate ให้ใช้วันเริ่ม
+      return ds >= start && ds <= end;
+    })
+    .sort((a,b) => a.id - b.id) // เรียงตาม ID เพื่อให้แท็บสีตรงกันในแนวนอน
+    .map(e => {
+      const isStart = ds === e.date;
+      const isEnd = ds === (e.endDate || e.date);
+      const isWeekStart = new Date(ds).getDay() === 0; // วันอาทิตย์ (ต้นสัปดาห์)
+      
+      let cls = tClass(e.type);
+      
+      // ถ้าเป็นกิจกรรมหลายวัน ให้ติดคลาสเพิ่มเพื่อใช้ CSS จัดการส่วนขอบให้ชนกัน
+      if (e.endDate && e.endDate !== e.date) {
+          cls += ' multi-day';
+          if (isStart) cls += ' md-start';
+          else if (isEnd) cls += ' md-end';
+          else cls += ' md-mid';
+      }
+
+      // แสดงชื่อกิจกรรมเฉพาะวันแรก, วันต้นสัปดาห์, หรือวันที่ 1 ของเดือน เพื่อไม่ให้ข้อความรก
+      const showTitle = isStart || isWeekStart || d === 1;
+      const titleText = showTitle ? `${tEmoji(e.type)} ${e.title}` : `&nbsp;`;
+      
+      return `<div class="event-pill ${cls}" onclick="showDetail(${e.id},event)">${titleText}</div>`;
+    }).join('');
+    
+    c+=`<div class="cal-cell${isToday?' today':''}"><div class="cal-date">${d}</div>${pills}</div>`;
+  }
+  
+  // วันที่ของเดือนถัดไป
+  const rem=(startDow+dIM)%7;
+  for(let d=1;d<=(rem?7-rem:0);d++) {
+    c+=`<div class="cal-cell other-month"><div class="cal-date">${d}</div></div>`;
+  }
+  document.getElementById('cal-body').innerHTML=c;
+}
 // DETAIL MODAL
 function showDetail(id,ev){
   if(ev)ev.stopPropagation();

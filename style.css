@@ -223,7 +223,26 @@ body{font-family:'Sarabun',sans-serif;background:var(--s3);color:var(--t);min-he
 .info-link-arrow{font-size:11px;color:var(--ht);flex-shrink:0}
 .info-actions-cell{width:76px;text-align:right;white-space:nowrap}
 .info-actions-cell .btn-sm{padding:4px 8px;font-size:11px;margin-left:3px}
-
+/* การแสดงผลกิจกรรมแบบหลายวันบนปฏิทิน */
+.event-pill.multi-day { 
+  position: relative; 
+  z-index: 1; 
+}
+.event-pill.md-start { 
+  border-top-right-radius: 0; 
+  border-bottom-right-radius: 0; 
+  margin-right: -5px; /* ดันขอบขวาให้ชนเส้นตาราง */
+}
+.event-pill.md-mid { 
+  border-radius: 0; 
+  margin-left: -5px; 
+  margin-right: -5px; 
+}
+.event-pill.md-end { 
+  border-top-left-radius: 0; 
+  border-bottom-left-radius: 0; 
+  margin-left: -5px; /* ดันขอบซ้ายให้ชนเส้นตาราง */
+}
 /* มือถือ — card stack แทนตาราง */
 @media(max-width:768px){
   .info-table,.info-table thead,.info-table tbody,.info-table th,.info-table td,.info-row{display:block;width:100%}

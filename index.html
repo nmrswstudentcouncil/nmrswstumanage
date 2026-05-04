@@ -49,6 +49,8 @@
           <div class="nav-item" onclick="setView('list',this)" data-view="list"><span class="nav-icon">📋</span> รายการงาน</div>
           <div class="nav-item" onclick="setView('mytasks',this)" data-view="mytasks"><span class="nav-icon">✅</span> งานของฉัน</div>
           <div class="nav-item" onclick="setView('members',this)" data-view="members"><span class="nav-icon">👥</span> สมาชิก</div>
+          <div class="nav-item" onclick="setView('info',this)" data-view="info"><span class="nav-icon">📂</span> ข้อมูล</div>
+          <div class="nav-item" onclick="setView('database',this)" data-view="database" style="display:none"><span class="nav-icon">🗄️</span> ฐานข้อมูล</div>
         </div>
         <div>
           <div class="sidebar-label" style="margin-bottom:10px">สถิติ</div>
@@ -106,6 +108,22 @@
           <div class="content-header"><div><div class="content-title">สมาชิกคณะกรรมการ</div></div></div>
           <div class="members-grid" id="member-cards"></div>
         </div>
+
+        <div id="view-database" style="display:none">
+          <div class="content-header">
+            <div><div class="content-title">🗄️ ฐานข้อมูล</div><div class="content-sub">ดูและ Export ข้อมูลทั้งหมดในระบบ (เฉพาะผู้ดูแล)</div></div>
+            <button class="btn-sm btn-edit" onclick="loadDataFromDB().then(renderDatabase)" style="padding:8px 14px">🔄 รีเฟรช</button>
+          </div>
+          <div id="db-content"></div>
+        </div>
+
+        <div id="view-info" style="display:none">
+          <div class="content-header">
+            <div><div class="content-title">📂 ข้อมูลอื่นๆ</div><div class="content-sub">เอกสารและลิงก์ที่เกี่ยวข้องกับคณะกรรมการนักเรียน</div></div>
+            <button class="btn-add" id="btn-add-info" onclick="openAddInfoModal()" style="display:none">+ เพิ่มรายการ</button>
+          </div>
+          <div id="info-content"></div>
+        </div>
       </main>
     </div>
     
@@ -114,6 +132,7 @@
       <div class="bottom-nav-item" onclick="setView('list',this)" data-view="list"><span class="nav-icon">📋</span></div>
       <div class="bottom-nav-item" onclick="setView('mytasks',this)" data-view="mytasks"><span class="nav-icon">✅</span></div>
       <div class="bottom-nav-item" onclick="setView('members',this)" data-view="members"><span class="nav-icon">👥</span></div>
+      <div class="bottom-nav-item" onclick="setView('info',this)" data-view="info"><span class="nav-icon">📂</span></div>
     </div>
   </div>
 
@@ -125,7 +144,7 @@
       </div>
       <div class="field"><label>ชื่องาน *</label><input type="text" id="f-title" placeholder="ระบุชื่องาน" /></div>
       <div class="form-row">
-        <div class="field"><label>ประเภท</label><select id="f-type"><option value="meeting">📋 ประชุม</option><option value="activity">🎉 กิจกรรม</option><option value="event">⭐ งานสำคัญ</option><option value="deadline">⏰ กำหนดส่ง</option></select></div>
+        <div class="field"><label>ประเภท</label><select id="f-type" onchange="onTypeChange(this.value)"><option value="meeting">📋 ประชุม</option><option value="activity">🎉 กิจกรรม</option><option value="event">⭐ งานสำคัญ</option><option value="deadline">⏰ กำหนดส่ง</option><option value="announce">📢 ประกาศ/แจ้งเพื่อทราบ</option></select></div>
         <div class="field"><label>สถานะ</label><select id="f-status"><option value="upcoming">กำลังจะมาถึง</option><option value="ongoing">กำลังดำเนินการ</option><option value="done">เสร็จสิ้น</option><option value="cancelled">ยกเลิก</option></select></div>
       </div>
       <div class="form-row">
@@ -137,10 +156,12 @@
         <div class="field"><label>เวลาสิ้นสุด</label><input type="time" id="f-endtime" value="12:00" /></div>
       </div>
       <div class="field"><label>สถานที่</label><input type="text" id="f-location" placeholder="เช่น ห้องประชุม 201" /></div>
-      <div class="field">
-        <label>จำนวนคนที่ต้องการ</label>
-        <input type="number" id="f-maxmembers" min="0" max="100" value="5" />
-        <div class="help-text">ระบุจำนวนคนที่ต้องการให้ลงชื่อเข้าร่วม — ใส่ 0 หมายถึงรับสมัครไม่จำกัดจำนวน</div>
+      <div id="signup-fields-wrap">
+        <div class="field">
+          <label>จำนวนคนที่ต้องการ</label>
+          <input type="number" id="f-maxmembers" min="0" max="100" value="5" />
+          <div class="help-text">ระบุจำนวนคนที่ต้องการให้ลงชื่อเข้าร่วม — ใส่ 0 หมายถึงรับสมัครไม่จำกัดจำนวน</div>
+        </div>
       </div>
       <div class="field"><label>รายละเอียด</label><textarea id="f-desc" rows="3" placeholder="วาระการประชุม รายละเอียดงาน..."></textarea></div>
       <div class="form-actions">
@@ -178,6 +199,35 @@
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <!-- MODAL: เพิ่ม/แก้ไข รายการข้อมูล -->
+  <div class="modal-overlay" id="modal-info">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-header">
+        <div class="modal-title" id="modal-info-title">เพิ่มรายการข้อมูล</div>
+        <button class="btn-close" onclick="closeModal('modal-info')">×</button>
+      </div>
+      <div class="field"><label>ชื่อรายการ *</label><input type="text" id="fi-label" placeholder="เช่น นโยบายพรรค" />  </div>
+      <div class="field">
+        <label>ประเภทลิงก์</label>
+        <select id="fi-linktype">
+          <option value="url">🔗 ลิงก์ทั่วไป (URL)</option>
+          <option value="gdoc">📄 Google Docs</option>
+          <option value="gsheet">📊 Google Sheets</option>
+          <option value="gslide">📑 Google Slides</option>
+          <option value="gdrive">📁 Google Drive</option>
+          <option value="fb">📘 Facebook</option>
+          <option value="word">📝 Word Document</option>
+        </select>
+      </div>
+      <div class="field"><label>URL / ลิงก์ *</label><input type="url" id="fi-url" placeholder="https://..." /></div>
+      <div class="field"><label>หมายเหตุ (ไม่บังคับ)</label><input type="text" id="fi-note" placeholder="คำอธิบายเพิ่มเติม" /></div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="closeModal('modal-info')">ยกเลิก</button>
+        <button class="btn-save" onclick="saveInfoItem()">💾 บันทึก</button>
+      </div>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>

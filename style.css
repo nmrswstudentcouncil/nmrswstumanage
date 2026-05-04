@@ -201,6 +201,67 @@ body{font-family:'Sarabun',sans-serif;background:var(--s3);color:var(--t);min-he
 .toast{position:fixed;bottom:24px;right:24px;background:#1a1a18;color:#fff;padding:10px 18px;border-radius:var(--rmd);font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;max-width:280px}
 .toast.show{opacity:1}
 
+.ev-announce{background:#e8eaf6;color:#3949ab}
+.announce-notice{background:#e8eaf6;border:1px solid #c5cae9;border-radius:var(--rmd);padding:14px 16px;font-size:13px;color:#3949ab;text-align:center;margin:14px 0;font-weight:500}
+
+/* INFO VIEW */
+.info-table-wrap{background:var(--s);border:0.5px solid var(--b);border-radius:var(--rlg);overflow:hidden}
+.info-table{width:100%;border-collapse:collapse}
+.info-table thead tr{background:var(--s2)}
+.info-table th{padding:10px 16px;text-align:left;font-size:10px;color:var(--ht);text-transform:uppercase;letter-spacing:.06em;font-weight:700;border-bottom:0.5px solid var(--b);white-space:nowrap}
+.info-table td{padding:12px 16px;border-bottom:0.5px solid var(--b);vertical-align:middle}
+.info-row:last-child td{border-bottom:none}
+.info-row:hover td{background:var(--s2)}
+.info-label-cell{width:38%;min-width:140px;max-width:260px}
+.info-item-label{font-size:13px;font-weight:600;color:var(--t);line-height:1.4;word-break:break-word}
+.info-item-note{font-size:11px;color:var(--ht);margin-top:3px;line-height:1.4;word-break:break-word}
+.info-link-cell{min-width:0}
+.info-link-chip{display:inline-flex;align-items:center;gap:7px;padding:5px 8px;border-radius:var(--rmd);text-decoration:none;color:var(--t);transition:background .15s;max-width:100%}
+.info-link-chip:hover{background:var(--s3)}
+.info-link-icon{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.info-link-text{font-size:13px;color:var(--p);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:underline;text-underline-offset:2px;min-width:0}
+.info-link-arrow{font-size:11px;color:var(--ht);flex-shrink:0}
+.info-actions-cell{width:76px;text-align:right;white-space:nowrap}
+.info-actions-cell .btn-sm{padding:4px 8px;font-size:11px;margin-left:3px}
+
+/* มือถือ — card stack แทนตาราง */
+@media(max-width:768px){
+  .info-table,.info-table thead,.info-table tbody,.info-table th,.info-table td,.info-row{display:block;width:100%}
+  .info-table thead{display:none}
+  .info-table td{padding:0;border:none}
+  .info-row{padding:13px 14px;border-bottom:0.5px solid var(--b)}
+  .info-row:last-child{border-bottom:none}
+  .info-row:hover{background:var(--s2)}
+  .info-label-cell{width:100%;max-width:100%;padding:0 0 8px 0}
+  .info-item-label{font-size:14px}
+  .info-link-cell{padding:0}
+  .info-link-chip{padding:5px 0;max-width:100%}
+  .info-link-text{max-width:calc(100vw - 100px)}
+  .info-actions-cell{width:100%;text-align:left;padding:8px 0 0 0}
+  .info-actions-cell .btn-sm{margin-left:0;margin-right:4px}
+}
+
+/* DATABASE VIEW */
+.db-stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.25rem}
+.db-stat-box{background:var(--s);border:0.5px solid var(--b);border-radius:var(--rlg);padding:14px 16px}
+.db-stat-n{font-size:24px;font-weight:700;color:var(--p)}
+.db-stat-l{font-size:11px;color:var(--ht);margin-top:2px}
+.db-section{background:var(--s);border:0.5px solid var(--b);border-radius:var(--rlg);margin-bottom:1rem;overflow:hidden}
+.db-section-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:0.5px solid var(--b);background:var(--s2)}
+.db-section-title{font-size:13px;font-weight:700}
+.db-table-wrap{overflow-x:auto;max-height:360px;overflow-y:auto}
+.db-table{width:100%;border-collapse:collapse;font-size:12px}
+.db-table th{position:sticky;top:0;background:var(--s3);padding:8px 12px;text-align:left;font-size:10px;color:var(--ht);text-transform:uppercase;letter-spacing:.05em;border-bottom:0.5px solid var(--b);white-space:nowrap;font-weight:700;z-index:1}
+.db-table td{padding:8px 12px;border-bottom:0.5px solid var(--b);color:var(--t);vertical-align:middle}
+.db-table tr:last-child td{border-bottom:none}
+.db-table tr:hover td{background:var(--s2)}
+.db-id{font-size:10px;background:var(--pl);color:var(--p);padding:2px 7px;border-radius:4px;font-weight:700;font-family:monospace}
+.db-badge{font-size:10px;padding:2px 8px;border-radius:8px;font-weight:600;white-space:nowrap}
+@media(max-width:768px){
+  .db-stats-row{grid-template-columns:repeat(2,1fr)}
+  .db-section-head{flex-direction:column;align-items:flex-start;gap:8px}
+}
+
 /* BOTTOM NAV (ซ่อนไว้ก่อนบน Desktop) */
 .bottom-nav { display: none; }
 

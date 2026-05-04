@@ -18,26 +18,23 @@ async function autoMarkPastEventsDone() {
   const todayStr = `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}-${String(TODAY.getDate()).padStart(2,'0')}`;
   const todayTime = TODAY.getHours() * 60 + TODAY.getMinutes();
 
-  // หา events ที่ควรเปลี่ยนเป็น done: status เป็น upcoming หรือ ongoing และวันผ่านไปแล้ว
   const toMark = events.filter(e => {
     if (e.status === 'done' || e.status === 'cancelled') return false;
-    const eventDate = e.endDate || e.date; // ใช้ endDate ถ้ามี
-    if (eventDate < todayStr) return true;   // วันผ่านไปแล้ว
-    if (eventDate === todayStr) {             // วันนี้ — ตรวจเวลาสิ้นสุด
+    const eventDate = e.endDate || e.date; 
+    if (eventDate < todayStr) return true;   
+    if (eventDate === todayStr) {             
       const endT = e.endTime || e.time;
       if (!endT) return false;
       const [h,m] = endT.split(':').map(Number);
-      return (h * 60 + m) < todayTime;       // เวลาผ่านแล้ว
+      return (h * 60 + m) < todayTime;       
     }
     return false;
   });
 
   if (!toMark.length) return;
 
-  // อัปเดต local state ทันที (ไม่ต้องรอ DB)
   toMark.forEach(e => { e.status = 'done'; });
 
-  // Batch update ใน Supabase (ทีละ event เนื่องจาก Supabase ไม่รองรับ bulk update by ID list โดยตรง)
   await Promise.all(
     toMark.map(e =>
       supabaseClient.from('events').update({ status: 'done' }).eq('id', e.id)
@@ -87,13 +84,11 @@ async function loadDataFromDB() {
         }))
       }));
 
-      // Auto-mark events as done เมื่อผ่านวันกำหนดแล้ว
       await autoMarkPastEventsDone();
     }
 
     renderAll(); 
 
-    // โหลด info items
     const { data: infoData } = await supabaseClient.from('info_items').select('*').order('sort_order', {ascending:true});
     if(infoData) infoItems = infoData;
     if(document.getElementById('view-info').style.display !== 'none') renderInfo();
@@ -103,7 +98,29 @@ async function loadDataFromDB() {
   }
 }
 
-// AUTH
+// AUTH & REALTIME UI SETUP
+function setupUILoggedIn(data) {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-screen').style.display = 'flex';
+  document.getElementById('top-name').textContent = data.name;
+  document.getElementById('top-avatar').textContent = data.av;
+  document.getElementById('top-role').textContent = data.role_label;
+  
+  if (data.role === 'member') {
+    document.getElementById('btn-add-cal').classList.add('hidden');
+    document.getElementById('btn-add-list').classList.add('hidden');
+  }
+  
+  const dbNavItems = document.querySelectorAll('[data-view="database"]');
+  dbNavItems.forEach(el => {
+    el.style.display = (data.role === 'president' || data.role === 'admin') ? '' : 'none';
+  });
+
+  if(data.role === 'president' || data.role === 'admin') {
+    document.getElementById('btn-add-info').style.display = '';
+  }
+}
+
 async function doLogin() {
   const u = document.getElementById('login-user').value.trim().toLowerCase();
   const p = document.getElementById('login-pass').value;
@@ -115,44 +132,62 @@ async function doLogin() {
     err.style.display = 'none';
     currentUser = { username: data.username, ...data, name: data.name, roleLabel: data.role_label, av: data.av };
     
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('main-screen').style.display = 'flex';
-    document.getElementById('top-name').textContent = data.name;
-    document.getElementById('top-avatar').textContent = data.av;
-    document.getElementById('top-role').textContent = data.role_label;
+    // บันทึกลง Local Storage
+    localStorage.setItem('loggedInUser', data.username);
     
-    if (data.role === 'member') {
-      document.getElementById('btn-add-cal').classList.add('hidden');
-      document.getElementById('btn-add-list').classList.add('hidden');
-    }
-    
-    // แสดงเมนู Database เฉพาะ president และ admin
-    const dbNavItems = document.querySelectorAll('[data-view="database"]');
-    dbNavItems.forEach(el => {
-      el.style.display = (data.role === 'president' || data.role === 'admin') ? '' : 'none';
-    });
-
-    // แสดงปุ่มเพิ่มข้อมูลเฉพาะ president และ admin
-    if(data.role === 'president' || data.role === 'admin') {
-      document.getElementById('btn-add-info').style.display = '';
-    }
-    
+    setupUILoggedIn(data);
     await loadDataFromDB();
   } else { 
     err.style.display = 'block'; 
   }
 }
+
 document.getElementById('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 document.getElementById('login-user').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('login-pass').focus()});
-function doLogout(){currentUser=null;document.getElementById('main-screen').style.display='none';document.getElementById('login-screen').style.display='flex';document.getElementById('login-user').value='';document.getElementById('login-pass').value=''}
+
+function doLogout() {
+  currentUser = null;
+  // ล้าง Local Storage
+  localStorage.removeItem('loggedInUser');
+  document.getElementById('main-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+}
+
+async function checkAutoLogin() {
+  const savedUser = localStorage.getItem('loggedInUser');
+  if (savedUser) {
+    const { data, error } = await supabaseClient.from('users').select('*').eq('username', savedUser).maybeSingle();
+    if (data) {
+      currentUser = { username: data.username, ...data, name: data.name, roleLabel: data.role_label, av: data.av };
+      setupUILoggedIn(data);
+      await loadDataFromDB();
+    } else {
+      localStorage.removeItem('loggedInUser');
+    }
+  }
+}
+
+function setupRealtime() {
+  supabaseClient
+    .channel('public-db-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, payload => {
+      console.log('🔄 อัปเดตข้อมูล events แบบ Realtime');
+      if (currentUser) loadDataFromDB();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'event_signups' }, payload => {
+      console.log('🔄 อัปเดตข้อมูล event_signups แบบ Realtime');
+      if (currentUser) loadDataFromDB();
+    })
+    .subscribe();
+}
 
 // NAVIGATION
 function setView(view, el){
-  // เคลียร์สถานะ active ทั้ง sidebar และ bottom nav
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
   
-  // ซิงค์ปุ่มให้ active ตรงกัน
   const sideEl = document.querySelector(`.nav-item[data-view="${view}"]`);
   const botEl = document.querySelector(`.bottom-nav-item[data-view="${view}"]`);
   if(sideEl) sideEl.classList.add('active');
@@ -169,7 +204,7 @@ function setView(view, el){
 function switchToView(view,btn){
   document.querySelectorAll('.view-tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
-  setView(view, null); // เรียก setView เปล่าๆ ระบบจะซิงค์ปุ่มให้เอง
+  setView(view, null); 
 }
 
 // HELPERS
@@ -184,7 +219,6 @@ const sColor=s=>({upcoming:'#b71c1c',ongoing:'#854F0B',done:'#3B6D11',cancelled:
 function dateFmt(d){if(!d)return'';const[y,m,day]=d.split('-');return`${parseInt(day)} ${THAI_MONTHS[parseInt(m)-1]} ${parseInt(y)+543}`}
 function getU(username){return USERS[username]||{name:username,av:username[0]||'?',dept:'',roleLabel:''}}
 function isSigned(ev){return currentUser&&ev.signups.some(s=>s.username===currentUser.username)}
-// type 'announce' ไม่มีระบบลงชื่อ
 function isSignupType(ev){return ev.type!=='announce'}
 function canSignup(ev){return currentUser&&!isSigned(ev)&&ev.status==='upcoming'&&isSignupType(ev)&&(ev.maxMembers===0||ev.signups.length<ev.maxMembers)}
 function slotInfo(ev){
@@ -595,7 +629,6 @@ async function saveInfoItem() {
   const linkType = document.getElementById('fi-linktype').value;
   const note  = document.getElementById('fi-note').value.trim();
 
-  // สร้าง display_text จาก URL
   let displayText = linkTypeLabel(linkType);
   try {
     const hostname = new URL(url).hostname.replace('www.','');
@@ -755,3 +788,7 @@ function closeModal(id){document.getElementById(id).classList.remove('open')}
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')}));
 let toastT;
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600)}
+
+// INIT
+checkAutoLogin();
+setupRealtime();

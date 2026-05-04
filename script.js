@@ -6,11 +6,48 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let USERS = {};
 let MEMBERS_LIST = [];
 let events = [];
+let infoItems = [];  // ข้อมูลอื่นๆ
 
 let currentUser=null,nextId=20,editingId=null;
-let calYear=2026,calMonth=3;
-const TODAY=new Date(2026,3,12);
+const TODAY=new Date();
+let calYear=TODAY.getFullYear(),calMonth=TODAY.getMonth();
 const THAI_MONTHS=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+
+// AUTO-MARK PAST EVENTS AS DONE
+async function autoMarkPastEventsDone() {
+  const todayStr = `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}-${String(TODAY.getDate()).padStart(2,'0')}`;
+  const todayTime = TODAY.getHours() * 60 + TODAY.getMinutes();
+
+  // หา events ที่ควรเปลี่ยนเป็น done: status เป็น upcoming หรือ ongoing และวันผ่านไปแล้ว
+  const toMark = events.filter(e => {
+    if (e.status === 'done' || e.status === 'cancelled') return false;
+    const eventDate = e.endDate || e.date; // ใช้ endDate ถ้ามี
+    if (eventDate < todayStr) return true;   // วันผ่านไปแล้ว
+    if (eventDate === todayStr) {             // วันนี้ — ตรวจเวลาสิ้นสุด
+      const endT = e.endTime || e.time;
+      if (!endT) return false;
+      const [h,m] = endT.split(':').map(Number);
+      return (h * 60 + m) < todayTime;       // เวลาผ่านแล้ว
+    }
+    return false;
+  });
+
+  if (!toMark.length) return;
+
+  // อัปเดต local state ทันที (ไม่ต้องรอ DB)
+  toMark.forEach(e => { e.status = 'done'; });
+
+  // Batch update ใน Supabase (ทีละ event เนื่องจาก Supabase ไม่รองรับ bulk update by ID list โดยตรง)
+  await Promise.all(
+    toMark.map(e =>
+      supabaseClient.from('events').update({ status: 'done' }).eq('id', e.id)
+    )
+  );
+
+  if (toMark.length > 0) {
+    console.log(`✅ Auto-marked ${toMark.length} event(s) as done`);
+  }
+}
 
 async function loadDataFromDB() {
   try {
@@ -49,9 +86,18 @@ async function loadDataFromDB() {
           signedAt: new Date(s.signed_at).toLocaleString('th-TH')
         }))
       }));
+
+      // Auto-mark events as done เมื่อผ่านวันกำหนดแล้ว
+      await autoMarkPastEventsDone();
     }
 
     renderAll(); 
+
+    // โหลด info items
+    const { data: infoData } = await supabaseClient.from('info_items').select('*').order('sort_order', {ascending:true});
+    if(infoData) infoItems = infoData;
+    if(document.getElementById('view-info').style.display !== 'none') renderInfo();
+
   } catch (err) {
     console.error("เกิดข้อผิดพลาดในการโหลดข้อมูล:", err);
   }
@@ -80,6 +126,17 @@ async function doLogin() {
       document.getElementById('btn-add-list').classList.add('hidden');
     }
     
+    // แสดงเมนู Database เฉพาะ president และ admin
+    const dbNavItems = document.querySelectorAll('[data-view="database"]');
+    dbNavItems.forEach(el => {
+      el.style.display = (data.role === 'president' || data.role === 'admin') ? '' : 'none';
+    });
+
+    // แสดงปุ่มเพิ่มข้อมูลเฉพาะ president และ admin
+    if(data.role === 'president' || data.role === 'admin') {
+      document.getElementById('btn-add-info').style.display = '';
+    }
+    
     await loadDataFromDB();
   } else { 
     err.style.display = 'block'; 
@@ -101,11 +158,13 @@ function setView(view, el){
   if(sideEl) sideEl.classList.add('active');
   if(botEl) botEl.classList.add('active');
 
-  ['calendar','list','mytasks','members','database'].forEach(v => {
+  ['calendar','list','mytasks','members','database','info'].forEach(v => {
     const d = document.getElementById('view-'+v);
     if(d) d.style.display = v === view ? 'block' : 'none';
   });
   if(view === 'mytasks') renderMyTasks();
+  if(view === 'database') renderDatabase();
+  if(view === 'info') renderInfo();
 }
 function switchToView(view,btn){
   document.querySelectorAll('.view-tab').forEach(t=>t.classList.remove('active'));
@@ -113,20 +172,21 @@ function switchToView(view,btn){
   setView(view, null); // เรียก setView เปล่าๆ ระบบจะซิงค์ปุ่มให้เอง
 }
 
-// HELPERS (เปลี่ยนโทนสีสำหรับ Type หลัก)
-const tClass=t=>({meeting:'ev-meeting',activity:'ev-activity',event:'ev-event',deadline:'ev-deadline'}[t]||'ev-meeting');
-const tLabel=t=>({meeting:'ประชุม',activity:'กิจกรรม',event:'งานสำคัญ',deadline:'กำหนดส่ง'}[t]||t);
-const tEmoji=t=>({meeting:'📋',activity:'🎉',event:'⭐',deadline:'⏰'}[t]||'📌');
+// HELPERS
+const tClass=t=>({meeting:'ev-meeting',activity:'ev-activity',event:'ev-event',deadline:'ev-deadline',announce:'ev-announce'}[t]||'ev-meeting');
+const tLabel=t=>({meeting:'ประชุม',activity:'กิจกรรม',event:'งานสำคัญ',deadline:'กำหนดส่ง',announce:'ประกาศ/แจ้งเพื่อทราบ'}[t]||t);
+const tEmoji=t=>({meeting:'📋',activity:'🎉',event:'⭐',deadline:'⏰',announce:'📢'}[t]||'📌');
 const sLabel=s=>({upcoming:'กำลังจะมาถึง',ongoing:'กำลังดำเนิน',done:'เสร็จสิ้น',cancelled:'ยกเลิก'}[s]||s);
 const sTagClass=s=>({upcoming:'tag-upcoming',ongoing:'tag-ongoing',done:'tag-done',cancelled:'tag-cancelled'}[s]||'');
-// ปรับแก้สีพื้นหลัง event-color-bar ให้เข้ากับธีมแดง
-const bColor=t=>({meeting:'#d32f2f',activity:'#63991f',event:'#BA7517',deadline:'#e24b4a'}[t]||'#888'); 
+const bColor=t=>({meeting:'#d32f2f',activity:'#63991f',event:'#BA7517',deadline:'#e24b4a',announce:'#5c6bc0'}[t]||'#888');
 const sBg=s=>({upcoming:'#ffebee',ongoing:'#FAEEDA',done:'#EAF3DE',cancelled:'#FCEBEB'}[s]);
 const sColor=s=>({upcoming:'#b71c1c',ongoing:'#854F0B',done:'#3B6D11',cancelled:'#A32D2D'}[s]);
 function dateFmt(d){if(!d)return'';const[y,m,day]=d.split('-');return`${parseInt(day)} ${THAI_MONTHS[parseInt(m)-1]} ${parseInt(y)+543}`}
 function getU(username){return USERS[username]||{name:username,av:username[0]||'?',dept:'',roleLabel:''}}
 function isSigned(ev){return currentUser&&ev.signups.some(s=>s.username===currentUser.username)}
-function canSignup(ev){return currentUser&&!isSigned(ev)&&ev.status==='upcoming'&&(ev.maxMembers===0||ev.signups.length<ev.maxMembers)}
+// type 'announce' ไม่มีระบบลงชื่อ
+function isSignupType(ev){return ev.type!=='announce'}
+function canSignup(ev){return currentUser&&!isSigned(ev)&&ev.status==='upcoming'&&isSignupType(ev)&&(ev.maxMembers===0||ev.signups.length<ev.maxMembers)}
 function slotInfo(ev){
   const cur=ev.signups.length,max=ev.maxMembers;
   if(max===0)return{pct:Math.min(cur*8,100),text:`${cur} คนลงชื่อ (ไม่จำกัด)`,full:false,cur,max};
@@ -169,7 +229,7 @@ function renderCalendar(){
 // LIST
 function renderList(){
   const el=document.getElementById('event-list');
-  const sorted=[...events].sort((a,b)=>a.date.localeCompare(b.date));
+  const sorted=[...events].filter(e=>e.type!=='announce').sort((a,b)=>a.date.localeCompare(b.date));
   if(!sorted.length){el.innerHTML='<div class="empty-state">ยังไม่มีงานในระบบ</div>';return}
   el.innerHTML=sorted.map(e=>{
     const sf=slotInfo(e);const sc=slotBarColor(e);const signed=isSigned(e);
@@ -193,8 +253,8 @@ function renderMyTasks(){
   if(!currentUser)return;
   const el=document.getElementById('my-tasks-content');
   const canCreate=currentUser.role!=='member';
-  const myCreated=events.filter(e=>e.createdBy===currentUser.username);
-  const mySigned=events.filter(e=>e.createdBy!==currentUser.username&&isSigned(e));
+  const myCreated=events.filter(e=>e.createdBy===currentUser.username&&e.type!=='announce');
+  const mySigned=events.filter(e=>e.createdBy!==currentUser.username&&isSigned(e)&&e.type!=='announce');
   let html='';
   if(canCreate){
     html+=`<div class="task-section-label">📝 งานที่ฉันสร้าง — ${myCreated.length} งาน</div>`;
@@ -268,10 +328,16 @@ function openAddModal(){
   document.getElementById('f-status').value='upcoming';
   document.getElementById('f-starttime').value='09:00';
   document.getElementById('f-endtime').value='12:00';
-  const d=`${calYear}-${String(calMonth+1).padStart(2,'0')}-12`;
+  const now=new Date();
+  const d=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   document.getElementById('f-start').value=d;
   document.getElementById('f-end').value=d;
+  onTypeChange('meeting');
   document.getElementById('modal-add').classList.add('open');
+}
+function onTypeChange(type){
+  const signupWrap=document.getElementById('signup-fields-wrap');
+  if(signupWrap) signupWrap.style.display = type==='announce' ? 'none' : '';
 }
 function openEditModal(id){
   const e=events.find(x=>x.id===id);if(!e)return;
@@ -287,6 +353,7 @@ function openEditModal(id){
   document.getElementById('f-end').value=e.endDate||e.date;
   document.getElementById('f-starttime').value=e.time;
   document.getElementById('f-endtime').value=e.endTime||'12:00';
+  onTypeChange(e.type);
   closeModal('modal-detail');
   document.getElementById('modal-add').classList.add('open');
 }
@@ -410,7 +477,9 @@ function showDetail(id,ev){
     <div class="signup-item-left"><span style="font-size:11px;color:var(--ht);width:20px;text-align:right">${i+1}</span><div class="av-sm">${u.av}</div><div><div>${u.name}</div><div class="signup-dept">${u.dept}</div></div></div>
     <span style="font-size:11px;color:var(--ht)">${s.signedAt}</span>
   </div>`}).join('');
-  document.getElementById('detail-signup-section').innerHTML=`
+  document.getElementById('detail-signup-section').innerHTML= !isSignupType(e)
+    ? `<div class="announce-notice">📢 กิจกรรมนี้เป็นการแจ้งเพื่อทราบ ไม่มีระบบลงชื่อเข้าร่วม</div>`
+    : `
     <div class="signup-progress-box">
       <div class="signup-progress-head">
         <div>
@@ -429,10 +498,256 @@ function showDetail(id,ev){
   document.getElementById('detail-owner-actions').innerHTML=isOwner?`
     <div class="owner-actions">
       <button class="btn-sm btn-edit" onclick="openEditModal(${e.id})">✏️ แก้ไขงาน</button>
-      <button class="btn-sm btn-export" onclick="exportSignups(${e.id})">⬇️ Export รายชื่อ (.csv)</button>
+      ${isSignupType(e)?`<button class="btn-sm btn-export" onclick="exportSignups(${e.id})">⬇️ Export รายชื่อ (.csv)</button>`:''}
       <button class="btn-sm btn-danger" onclick="confirmDelete(${e.id})">🗑 ลบงาน</button>
     </div>`:'';
   document.getElementById('modal-detail').classList.add('open');
+}
+
+// INFO VIEW
+const linkTypeIcon = t => ({
+  url:'🔗', gdoc:'📄', gsheet:'📊', gslide:'📑', gdrive:'📁', fb:'📘', word:'📝'
+}[t] || '🔗');
+const linkTypeLabel = t => ({
+  url:'ลิงก์', gdoc:'Google Docs', gsheet:'Google Sheets', gslide:'Google Slides',
+  gdrive:'Google Drive', fb:'Facebook', word:'Word'
+}[t] || 'ลิงก์');
+const linkTypeBg = t => ({
+  url:'#e8f0fe', gdoc:'#e6f4ea', gsheet:'#e6f4ea', gslide:'#fce8b2',
+  gdrive:'#e8f0fe', fb:'#e7f3ff', word:'#e8f0fe'
+}[t] || '#f5f5f5');
+const linkTypeColor = t => ({
+  url:'#1a73e8', gdoc:'#1e8e3e', gsheet:'#188038', gslide:'#f29900',
+  gdrive:'#1a73e8', fb:'#1877f2', word:'#2b5eb8'
+}[t] || '#555');
+
+let editingInfoId = null;
+
+function renderInfo() {
+  const el = document.getElementById('info-content');
+  if(!el) return;
+  if(!infoItems.length) {
+    el.innerHTML = '<div class="empty-state">ยังไม่มีรายการข้อมูล</div>';
+    return;
+  }
+  const isAdmin = currentUser && (currentUser.role === 'president' || currentUser.role === 'admin');
+  el.innerHTML = `
+    <div class="info-table-wrap">
+      <table class="info-table">
+        <thead>
+          <tr>
+            <th>รายการ</th>
+            <th>ข้อมูล / ลิงก์</th>
+            ${isAdmin ? '<th>จัดการ</th>' : ''}
+          </tr>
+        </thead>
+        <tbody>
+          ${infoItems.map(item => `
+            <tr class="info-row">
+              <td class="info-label-cell">
+                <div class="info-item-label">${item.label}</div>
+                ${item.note ? `<div class="info-item-note">${item.note}</div>` : ''}
+              </td>
+              <td class="info-link-cell">
+                <a class="info-link-chip" href="${item.url}" target="_blank" rel="noopener">
+                  <span class="info-link-icon" style="background:${linkTypeBg(item.link_type)};color:${linkTypeColor(item.link_type)}">${linkTypeIcon(item.link_type)}</span>
+                  <span class="info-link-text">${item.display_text || linkTypeLabel(item.link_type)}</span>
+                  <span class="info-link-arrow">↗</span>
+                </a>
+              </td>
+              ${isAdmin ? `<td class="info-actions-cell">
+                <button class="btn-sm btn-edit" onclick="openEditInfoModal(${item.id})">✏️</button>
+                <button class="btn-sm btn-danger" onclick="confirmDeleteInfo(${item.id})">🗑</button>
+              </td>` : ''}
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function openAddInfoModal() {
+  editingInfoId = null;
+  document.getElementById('modal-info-title').textContent = 'เพิ่มรายการข้อมูล';
+  document.getElementById('fi-label').value = '';
+  document.getElementById('fi-url').value = '';
+  document.getElementById('fi-note').value = '';
+  document.getElementById('fi-linktype').value = 'url';
+  document.getElementById('modal-info').classList.add('open');
+}
+
+function openEditInfoModal(id) {
+  const item = infoItems.find(x => x.id === id);
+  if(!item) return;
+  editingInfoId = id;
+  document.getElementById('modal-info-title').textContent = 'แก้ไขรายการข้อมูล';
+  document.getElementById('fi-label').value = item.label;
+  document.getElementById('fi-url').value = item.url;
+  document.getElementById('fi-note').value = item.note || '';
+  document.getElementById('fi-linktype').value = item.link_type || 'url';
+  document.getElementById('modal-info').classList.add('open');
+}
+
+async function saveInfoItem() {
+  const label = document.getElementById('fi-label').value.trim();
+  const url   = document.getElementById('fi-url').value.trim();
+  if(!label || !url) { alert('กรุณากรอกชื่อรายการและ URL'); return; }
+  const linkType = document.getElementById('fi-linktype').value;
+  const note  = document.getElementById('fi-note').value.trim();
+
+  // สร้าง display_text จาก URL
+  let displayText = linkTypeLabel(linkType);
+  try {
+    const hostname = new URL(url).hostname.replace('www.','');
+    if(url.includes('docs.google.com')) displayText = label;
+    else if(url.includes('drive.google.com')) displayText = label;
+    else if(url.includes('facebook.com')) displayText = 'Link';
+    else displayText = hostname || linkTypeLabel(linkType);
+  } catch(_){}
+
+  const payload = { label, url, link_type: linkType, note, display_text: displayText,
+    sort_order: editingInfoId ? undefined : (infoItems.length + 1) };
+
+  if(editingInfoId) {
+    await supabaseClient.from('info_items').update(payload).eq('id', editingInfoId);
+    showToast('✅ แก้ไขรายการเรียบร้อย');
+  } else {
+    await supabaseClient.from('info_items').insert([payload]);
+    showToast('✅ เพิ่มรายการเรียบร้อย');
+  }
+  closeModal('modal-info');
+  const { data } = await supabaseClient.from('info_items').select('*').order('sort_order', {ascending:true});
+  if(data) infoItems = data;
+  renderInfo();
+}
+
+function confirmDeleteInfo(id) {
+  const item = infoItems.find(x => x.id === id);
+  document.getElementById('confirm-title').textContent = 'ยืนยันการลบรายการ';
+  document.getElementById('confirm-msg').textContent = `ต้องการลบรายการ "${item.label}" ออกจากระบบ?`;
+  document.getElementById('confirm-ok').onclick = () => deleteInfoItem(id);
+  document.getElementById('modal-confirm').classList.add('open');
+}
+
+async function deleteInfoItem(id) {
+  await supabaseClient.from('info_items').delete().eq('id', id);
+  closeModal('modal-confirm');
+  showToast('🗑 ลบรายการเรียบร้อย');
+  const { data } = await supabaseClient.from('info_items').select('*').order('sort_order', {ascending:true});
+  if(data) infoItems = data;
+  renderInfo();
+}
+
+// DATABASE VIEW
+function renderDatabase(){
+  const el=document.getElementById('db-content');if(!el)return;
+  const totalSignups=events.reduce((s,e)=>s+e.signups.length,0);
+  const byType={meeting:0,activity:0,event:0,deadline:0};
+  events.forEach(e=>{if(byType[e.type]!==undefined)byType[e.type]++});
+
+  let html=`
+  <div class="db-stats-row">
+    <div class="db-stat-box"><div class="db-stat-n">${events.length}</div><div class="db-stat-l">งานทั้งหมด</div></div>
+    <div class="db-stat-box"><div class="db-stat-n" style="color:var(--g)">${totalSignups}</div><div class="db-stat-l">รายการลงชื่อ</div></div>
+    <div class="db-stat-box"><div class="db-stat-n" style="color:var(--a)">${Object.values(USERS).length}</div><div class="db-stat-l">ผู้ใช้งาน</div></div>
+    <div class="db-stat-box"><div class="db-stat-n" style="color:var(--p)">${events.filter(e=>e.status==='upcoming').length}</div><div class="db-stat-l">งานที่รอดำเนิน</div></div>
+  </div>
+
+  <div class="db-section">
+    <div class="db-section-head">
+      <div class="db-section-title">📋 ตาราง events (${events.length} รายการ)</div>
+      <button class="btn-sm btn-export" onclick="exportAllEvents()">⬇️ Export CSV</button>
+    </div>
+    <div class="db-table-wrap">
+      <table class="db-table">
+        <thead><tr><th>ID</th><th>ชื่องาน</th><th>ประเภท</th><th>สถานะ</th><th>วันที่</th><th>เวลา</th><th>สถานที่</th><th>Max</th><th>ลงชื่อ</th><th>สร้างโดย</th></tr></thead>
+        <tbody>${events.map(e=>`<tr>
+          <td><span class="db-id">${e.id}</span></td>
+          <td style="font-weight:600">${tEmoji(e.type)} ${e.title}</td>
+          <td><span class="db-badge" style="background:${sBg(e.status)||'#f5f5f5'};color:${sColor(e.status)||'#888'}">${tLabel(e.type)}</span></td>
+          <td><span class="db-badge" style="background:${sBg(e.status)};color:${sColor(e.status)}">${sLabel(e.status)}</span></td>
+          <td>${e.date}</td>
+          <td>${e.time}</td>
+          <td>${e.location||'—'}</td>
+          <td style="text-align:center">${e.maxMembers===0?'∞':e.maxMembers}</td>
+          <td style="text-align:center;font-weight:600;color:${e.signups.length>0?'var(--g)':'var(--ht)'}">${e.signups.length}</td>
+          <td>${getU(e.createdBy).name}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="db-section">
+    <div class="db-section-head">
+      <div class="db-section-title">✍️ ตาราง event_signups (${totalSignups} รายการ)</div>
+      <button class="btn-sm btn-export" onclick="exportAllSignups()">⬇️ Export CSV</button>
+    </div>
+    <div class="db-table-wrap">
+      <table class="db-table">
+        <thead><tr><th>Event ID</th><th>ชื่องาน</th><th>Username</th><th>ชื่อผู้ลงชื่อ</th><th>ฝ่าย</th><th>ตำแหน่ง</th><th>วันเวลาที่ลงชื่อ</th></tr></thead>
+        <tbody>${events.flatMap(e=>e.signups.map(s=>{const u=getU(s.username);return`<tr>
+          <td><span class="db-id">${e.id}</span></td>
+          <td style="font-weight:600">${e.title}</td>
+          <td><code style="font-size:11px;background:var(--s2);padding:2px 6px;border-radius:4px">${s.username}</code></td>
+          <td>${u.name}</td>
+          <td>${u.dept||'—'}</td>
+          <td>${u.roleLabel||'—'}</td>
+          <td style="font-size:11px;color:var(--ht)">${s.signedAt}</td>
+        </tr>`})).join('')||`<tr><td colspan="7" style="text-align:center;color:var(--ht);padding:16px">ยังไม่มีรายการลงชื่อ</td></tr>`}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="db-section">
+    <div class="db-section-head">
+      <div class="db-section-title">👥 ตาราง users (${MEMBERS_LIST.length} รายการ)</div>
+    </div>
+    <div class="db-table-wrap">
+      <table class="db-table">
+        <thead><tr><th>Username</th><th>ชื่อ</th><th>ตำแหน่ง</th><th>Role</th><th>ฝ่าย</th><th>AV</th><th>งานที่สร้าง</th><th>งานที่ลงชื่อ</th></tr></thead>
+        <tbody>${MEMBERS_LIST.map(m=>{
+          const created=events.filter(e=>e.createdBy===m.username).length;
+          const signed=events.filter(e=>e.signups.some(s=>s.username===m.username)).length;
+          return`<tr>
+            <td><code style="font-size:11px;background:var(--s2);padding:2px 6px;border-radius:4px">${m.username}</code></td>
+            <td style="font-weight:600">${m.name}</td>
+            <td>${m.role_label||'—'}</td>
+            <td><span class="db-badge" style="background:var(--pl);color:var(--p)">${m.role}</span></td>
+            <td>${m.dept||'—'}</td>
+            <td style="font-size:16px;text-align:center">${m.av}</td>
+            <td style="text-align:center;color:${created>0?'var(--p)':'var(--ht)'};font-weight:${created>0?'600':'400'}">${created}</td>
+            <td style="text-align:center;color:${signed>0?'var(--g)':'var(--ht)'};font-weight:${signed>0?'600':'400'}">${signed}</td>
+          </tr>`;}).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+  el.innerHTML=html;
+}
+
+function exportAllEvents(){
+  const rows=[
+    ['ID','ชื่องาน','ประเภท','สถานะ','วันที่','เวลาเริ่ม','วันสิ้นสุด','เวลาสิ้นสุด','สถานที่','รายละเอียด','Max','จำนวนลงชื่อ','สร้างโดย'],
+    ...events.map(e=>[e.id,e.title,tLabel(e.type),sLabel(e.status),e.date,e.time,e.endDate||'',e.endTime||'',e.location||'',e.desc||'',e.maxMembers===0?'ไม่จำกัด':e.maxMembers,e.signups.length,getU(e.createdBy).name])
+  ];
+  downloadCSV(rows,`events_all_${new Date().toISOString().slice(0,10)}.csv`);
+  showToast('⬇️ Export ตาราง events เรียบร้อย');
+}
+
+function exportAllSignups(){
+  const rows=[
+    ['Event ID','ชื่องาน','Username','ชื่อผู้ลงชื่อ','ฝ่าย','ตำแหน่ง','วันเวลาที่ลงชื่อ'],
+    ...events.flatMap(e=>e.signups.map(s=>{const u=getU(s.username);return[e.id,e.title,s.username,u.name,u.dept||'',u.roleLabel||'',s.signedAt]}))
+  ];
+  downloadCSV(rows,`signups_all_${new Date().toISOString().slice(0,10)}.csv`);
+  showToast(`⬇️ Export ตาราง signups ${rows.length-1} รายการ เรียบร้อย`);
+}
+
+function downloadCSV(rows,filename){
+  const BOM='\uFEFF';
+  const csv=BOM+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),download:filename});
+  a.click();URL.revokeObjectURL(a.href);
 }
 
 // UTIL
@@ -440,4 +755,3 @@ function closeModal(id){document.getElementById(id).classList.remove('open')}
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')}));
 let toastT;
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600)}
-
